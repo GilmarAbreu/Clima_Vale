@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 from datetime import datetime
 import os
+from pytz import timezone  # Adicionada para ajuste de fuso horário
 
 # Configuração do Flask
 app = Flask(__name__)
@@ -23,7 +24,6 @@ CITIES = [
 
 # Caminho para a fonte TTF
 FONT_PATH = "./arial.ttf"  # Certifique-se de que essa fonte está no mesmo diretório
-
 
 def get_weather_data(city_name):
     """Consulta a API OpenWeatherMap para obter a probabilidade de chuva."""
@@ -59,10 +59,13 @@ def get_weather_data(city_name):
     # Se não houver chuva detectada
     return "0%"
 
-
 @app.route('/dynamic-image')
 def generate_image():
     """Gera uma imagem JPG com os dados atualizados."""
+    # Ajuste de fuso horário para o Brasil
+    brasil_tz = timezone("America/Sao_Paulo")
+    horario_brasil = datetime.now(brasil_tz).strftime('%d/%m/%Y %H:%M:%S')
+
     # Configuração da imagem
     width, height = 1150, 400
     row_height = 40
@@ -76,7 +79,7 @@ def generate_image():
     font = ImageFont.truetype(FONT_PATH, 20)
 
     # Título
-    title = f"Probabilidade de Chuva (Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')})"
+    title = f"Probabilidade de Chuva (Atualizado em {horario_brasil})"
     draw.text((10, 10), title, fill="black", font=font)
 
     # Cabeçalho
@@ -118,7 +121,6 @@ def generate_image():
     buffer.seek(0)
 
     return send_file(buffer, mimetype="image/jpeg", as_attachment=False, download_name="dynamic_image.jpg")
-
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
