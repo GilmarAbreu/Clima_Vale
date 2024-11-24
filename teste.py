@@ -29,15 +29,30 @@ def get_weather_data(city_name):
     """Consulta a API HG Weather para obter dados meteorológicos."""
     url = f"https://api.hgbrasil.com/weather?key={API_KEY}&city_name={city_name}"
     response = requests.get(url)
-    if response.status_code != 200:
-        return {"Temperatura": "N/D", "Condição": "N/D", "Umidade": "N/D", "Vento": "N/D"}  # Retorna valores padrão se a API falhar
+    data = response.json()
+    print(f"Dados da API para {city_name}: {data}")  # Debug para verificar retorno da API
+    
+    if response.status_code != 200 or "results" not in data:
+        return {
+            "Temperatura": "N/D", 
+            "Condição": "N/D", 
+            "Umidade": "N/D", 
+            "Vento": "N/D", 
+            "Probabilidade de Chuva": "N/D"
+        }
 
-    data = response.json().get("results", {})
+    results = data.get("results", {})
+    rain_probability = results.get("rain_probability", "N/D")  # Tenta buscar dos dados atuais
+    if rain_probability == "N/D" and "forecast" in results:
+        # Busca a probabilidade de chuva do próximo dia
+        rain_probability = results["forecast"][0].get("rain_probability", "N/D")
+
     return {
-        "Temperatura": f"{data.get('temp', 'N/D')}°C",
-        "Condição": data.get("description", "N/D"),
-        "Umidade": f"{data.get('humidity', 'N/D')}%",
-        "Vento": data.get("wind_speedy", "N/D")
+        "Temperatura": f"{results.get('temp', 'N/D')}°C",
+        "Condição": results.get("description", "N/D"),
+        "Umidade": f"{results.get('humidity', 'N/D')}%",
+        "Vento": results.get("wind_speedy", "N/D"),
+        "Probabilidade de Chuva": f"{rain_probability}%"
     }
 
 @app.route('/dynamic-image')
@@ -48,7 +63,7 @@ def generate_image():
     horario_brasil = datetime.now(brasil_tz).strftime('%d/%m/%Y %H:%M:%S')
 
     # Configuração da imagem
-    width, height = 1300, 500
+    width, height = 1600, 500
     row_height = 40
     header_height = 60
     total_height = header_height + len(CITIES) * row_height + 20
@@ -64,8 +79,8 @@ def generate_image():
     draw.text((10, 10), title, fill="black", font=font)
 
     # Cabeçalho
-    headers = ["Cidade", "Temperatura", "Condição", "Umidade", "Vento"]
-    col_widths = [400, 200, 300, 200, 200]
+    headers = ["Cidade", "Temperatura", "Condição", "Umidade", "Vento", "Probabilidade de Chuva"]
+    col_widths = [300, 200, 300, 200, 200, 300]
     start_x = 10
     y_offset = 50
 
@@ -86,6 +101,7 @@ def generate_image():
         draw.text((start_x + sum(col_widths[:2]) + 10, y_offset + 10), weather["Condição"], fill="black", font=font)
         draw.text((start_x + sum(col_widths[:3]) + 10, y_offset + 10), weather["Umidade"], fill="black", font=font)
         draw.text((start_x + sum(col_widths[:4]) + 10, y_offset + 10), weather["Vento"], fill="black", font=font)
+        draw.text((start_x + sum(col_widths[:5]) + 10, y_offset + 10), weather["Probabilidade de Chuva"], fill="black", font=font)
         y_offset += row_height
 
     # Salvar imagem em um buffer
