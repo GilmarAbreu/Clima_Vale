@@ -20,6 +20,7 @@ CITIES = [
     {"mina": "Brucutu", "nome": "São Gonçalo do Rio Abaixo, MG", "cidade": "São Gonçalo do Rio Abaixo"},
     {"mina": "Fábrica Nova, Fazendão, Timbopeba e Alegria", "nome": "Mariana, MG", "cidade": "Mariana"},
     {"mina": "Córrego do Meio", "nome": "Sabará, MG", "cidade": "Sabará"},
+    {"mina": "Minas paralisadas", "nome": "Barão de Cocais, MG", "cidade": "Barão de Cocais"},
 ]
 
 # Caminho para a fonte TTF
@@ -76,7 +77,7 @@ def generate_image():
     col_widths = [450, 320, 140, 260, 80, 170, 200]  # Ajustando proporções das colunas
 
     start_x = 10
-    y_offset = 50
+    y_offset = 55
 
     # Cabeçalho com centralização
     draw.rectangle([(start_x, y_offset), (width - 10, y_offset + header_height)], outline="black", fill="lightgray")
