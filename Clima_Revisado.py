@@ -27,12 +27,12 @@ CITIES = [
 ]
 
 # Caminho para a fonte TTF
-FONT_PATH = "./arial.ttf"  # Certifique-se de que essa fonte está no mesmo diretório
+FONT_PATH = "./arial.ttf"
 
 def get_weather_data_from_google(city_name):
     """Extrai os dados meteorológicos da página do Google em português."""
     query = f"clima {city_name.replace(' ', '+')}"
-    url = f"https://www.google.com/search?q={query}&hl=pt-BR"
+    url = f"https://www.google.com/search?q={query}&hl=pt-BR&gl=br"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
@@ -42,20 +42,25 @@ def get_weather_data_from_google(city_name):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
+        # Extrair dados da página do Google
         rain_probability = soup.find("span", {"id": "wob_pp"}).text.strip()
-        temperature = soup.find("span", {"id": "wob_tm"}).text.strip() + "°C"
+        temperature = soup.find("span", {"id": "wob_tm"}).text.strip()
         humidity = soup.find("span", {"id": "wob_hm"}).text.strip()
         wind = soup.find("span", {"id": "wob_ws"}).text.strip()
         condition = soup.find("span", {"id": "wob_dc"}).text.strip()
 
+        # Conversões
+        temperature_celsius = f"{temperature}°C"  # Google já retorna em Celsius
+        wind_speed_kmh = f"{int(float(wind.split()[0]) * 1.60934)} km/h"  # Convertendo mph para km/h
+
         return {
-            "Temperatura": temperature,
+            "Temperatura": temperature_celsius,
             "Condição": condition,
             "Umidade": humidity,
-            "Vento": wind,
+            "Vento": wind_speed_kmh,
             "Probabilidade de Chuva": rain_probability
         }
-    except (requests.RequestException, AttributeError) as e:
+    except (requests.RequestException, AttributeError, ValueError) as e:
         logger.error(f"Erro ao obter dados de clima: {e}")
         return {
             "Temperatura": "N/D",
@@ -65,20 +70,13 @@ def get_weather_data_from_google(city_name):
             "Probabilidade de Chuva": "N/D"
         }
 
-@app.route('/ping')
-def ping():
-    """Endpoint simples para manter o serviço ativo."""
-    logger.info("Ping recebido, mantendo o serviço ativo.")
-    return "OK", 200
-
 @app.route('/dynamic-image')
 def generate_image():
-    """Gera uma imagem JPG com os dados atualizados, agora com títulos em negrito e caixa alta."""
+    """Gera uma imagem JPG com os dados atualizados."""
     logger.info("Rota /dynamic-image acessada.")
     try:
         brasil_tz = timezone("America/Sao_Paulo")
         horario_brasil = datetime.now(brasil_tz).strftime('%d/%m/%Y %H:%M:%S')
-        logger.info(f"Horário Brasil: {horario_brasil}")
 
         width, row_height = 1700, 40
         header_height = 60
@@ -89,7 +87,7 @@ def generate_image():
         draw = ImageDraw.Draw(image)
 
         font = ImageFont.truetype(FONT_PATH, 20)
-        font_header = ImageFont.truetype(FONT_PATH, 22, encoding="unic")
+        font_header = ImageFont.truetype(FONT_PATH, 22)
 
         title = f"Dados Meteorológicos (Atualizado em {horario_brasil})"
         draw.text((10, 10), title, fill="black", font=font)
@@ -100,8 +98,8 @@ def generate_image():
         start_x = 10
         y_offset = 50
 
-        # Cabeçalho (com cor de fundo e título em negrito e caixa alta)
-        draw.rectangle([(start_x, y_offset), (width - 10, y_offset + header_height)], outline="black", fill="#4C9ED9")  # Azul claro
+        # Cabeçalho
+        draw.rectangle([(start_x, y_offset), (width - 10, y_offset + header_height)], outline="black", fill="#4C9ED9")
         for i, header in enumerate(headers):
             bbox = draw.textbbox((0, 0), header, font=font_header)
             text_width = bbox[2] - bbox[0]
@@ -109,17 +107,16 @@ def generate_image():
             draw.text((text_x, y_offset + 15), header, fill="white", font=font_header)
         y_offset += header_height
 
-        # Dados (linhas alternadas com cores)
+        # Dados
         for i, city in enumerate(CITIES):
             weather = get_weather_data_from_google(city["cidade"])
-            row_color = "#f4f4f4" if i % 2 == 0 else "#e0e0e0"  # Alterna entre cinza claro e mais escuro
+            row_color = "#f4f4f4" if i % 2 == 0 else "#e0e0e0"
             draw.rectangle([(start_x, y_offset), (width - 10, y_offset + row_height)], outline="black", fill=row_color)
 
-            # Não centralizadas
-            draw.text((start_x + 10, y_offset + 10), city["mina"], fill="black", font=font)  # Mina
-            draw.text((start_x + col_widths[0] + 10, y_offset + 10), city["nome"], fill="black", font=font)  # Cidade
+            # Escrever dados
+            draw.text((start_x + 10, y_offset + 10), city["mina"], fill="black", font=font)
+            draw.text((start_x + col_widths[0] + 10, y_offset + 10), city["nome"], fill="black", font=font)
 
-            # Centralizadas (Temperatura, Umidade, Vento, Probabilidade de Chuva)
             row_data = [
                 weather["Temperatura"],
                 weather["Condição"],
@@ -127,7 +124,7 @@ def generate_image():
                 weather["Vento"],
                 weather["Probabilidade de Chuva"]
             ]
-            col_indices = [2, 3, 4, 5, 6]  # Índices das colunas a centralizar
+            col_indices = [2, 3, 4, 5, 6]
             for i, data in enumerate(row_data):
                 col_index = col_indices[i]
                 bbox = draw.textbbox((0, 0), data, font=font)
@@ -140,7 +137,6 @@ def generate_image():
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG")
         buffer.seek(0)
-        logger.info("Imagem gerada com sucesso.")
         return send_file(buffer, mimetype="image/jpeg", as_attachment=False, download_name="dynamic_image.jpg")
     except Exception as e:
         logger.error(f"Erro ao gerar imagem: {e}")
