@@ -20,7 +20,7 @@ CITIES = [
     {"mina": "Brucutu", "nome": "São Gonçalo do Rio Abaixo, MG", "cidade": "São Gonçalo do Rio Abaixo"},
     {"mina": "Fábrica Nova, Fazendão, Timbopeba e Alegria", "nome": "Mariana, MG", "cidade": "Mariana"},
     {"mina": "Córrego do Meio", "nome": "Sabará, MG", "cidade": "Sabará"},
-    {"mina": "Minas paralisadas", "nome": "Barão de Cocais, MG", "cidade": "Barão de Cocais"},
+    {"mina": "Gongo Soco", "nome": "Barão de Cocais, MG", "cidade": "Barão de Cocais"}
 ]
 
 # Caminho para a fonte TTF
@@ -31,6 +31,8 @@ def get_weather_data(city_name):
     url = f"https://api.hgbrasil.com/weather?key={API_KEY}&city_name={city_name}"
     response = requests.get(url)
     data = response.json()
+
+    # Verificando se a resposta da API foi bem-sucedida
     if response.status_code != 200 or "results" not in data:
         return {
             "Temperatura": "N/D", 
@@ -41,10 +43,16 @@ def get_weather_data(city_name):
         }
 
     results = data.get("results", {})
+    
+    # Tratamento correto para rain_probability (string ou número)
     rain_probability = results.get("rain_probability", "N/D") 
     if rain_probability == "N/D" and "forecast" in results:
         rain_probability = results["forecast"][0].get("rain_probability", "N/D")
-
+    
+    # Garantir que a probabilidade de chuva seja convertida corretamente
+    if isinstance(rain_probability, str) and rain_probability.isdigit():
+        rain_probability = int(rain_probability)
+    
     return {
         "Temperatura": f"{results.get('temp', 'N/D')}°C",
         "Condição": results.get("description", "N/D"),
@@ -77,12 +85,12 @@ def generate_image():
     col_widths = [450, 320, 140, 260, 80, 170, 200]  # Ajustando proporções das colunas
 
     start_x = 10
-    y_offset = 55
+    y_offset = 50
 
     # Cabeçalho com centralização
     draw.rectangle([(start_x, y_offset), (width - 10, y_offset + header_height)], outline="black", fill="lightgray")
     for i, header in enumerate(headers):
-        text_width = draw.textbbox((0, 0), header, font=font_header)[2]
+        text_width = draw.textsize(header, font=font_header)[0]  # Usando textsize para largura do texto
         text_x = start_x + sum(col_widths[:i]) + (col_widths[i] - text_width) // 2
         draw.text((text_x, y_offset + 15), header, fill="black", font=font_header)
     y_offset += header_height
