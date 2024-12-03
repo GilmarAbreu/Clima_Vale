@@ -30,9 +30,9 @@ CITIES = [
 FONT_PATH = "./arial.ttf"  # Certifique-se de que essa fonte está no mesmo diretório
 
 def get_weather_data_from_google(city_name):
-    """Extrai os dados meteorológicos da página do Google."""
+    """Extrai os dados meteorológicos da página do Google em português."""
     query = f"clima {city_name.replace(' ', '+')}"
-    url = f"https://www.google.com/search?q={query}"
+    url = f"https://www.google.com/search?q={query}&hl=pt-BR"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
