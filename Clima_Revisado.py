@@ -1,115 +1,146 @@
-from flask import Flask, jsonify, request
-import time
-import random
+from flask import Flask, send_file
+from PIL import Image, ImageDraw, ImageFont
+import io
+from datetime import datetime
+import os
+from pytz import timezone
 import requests
 from bs4 import BeautifulSoup
-from PIL import Image, ImageDraw, ImageFont
-from io import BytesIO
 import logging
 
-# Criação da aplicação Flask
+# Configuração do Flask
 app = Flask(__name__)
 
-# Configuração de log
+# Configuração de Log
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Clima_Revisado")
+logger = logging.getLogger(__name__)
 
-# Função para obter dados de clima
+# Lista de cidades para consulta
+CITIES = [
+    {"mina": "Cauê, Conceição e Minas do Meio", "nome": "Itabira, MG", "cidade": "Itabira"},
+    {"mina": "Capanema", "nome": "Ouro Preto, MG", "cidade": "Ouro Preto"},
+    {"mina": "Água Limpa", "nome": "Rio Piracicaba, MG", "cidade": "Rio Piracicaba"},
+    {"mina": "Brucutu", "nome": "São Gonçalo do Rio Abaixo, MG", "cidade": "São Gonçalo do Rio Abaixo"},
+    {"mina": "Fábrica Nova, Fazendão, Timbopeba e Alegria", "nome": "Mariana, MG", "cidade": "Mariana"},
+    {"mina": "Córrego do Meio", "nome": "Sabará, MG", "cidade": "Sabará"},
+    {"mina": "Gongo Soco", "nome": "Barão de Cocais, MG", "cidade": "Barão de Cocais"}
+]
+
+# Caminho para a fonte TTF
+FONT_PATH = "./arial.ttf"
+
 def get_weather_data_from_google(city_name):
-    url = f"https://www.google.com/search?q=clima+{city_name}"
+    """Extrai os dados meteorológicos da página do Google em português."""
+    query = f"clima {city_name.replace(' ', '+')}"
+    url = f"https://www.google.com/search?q={query}&hl=pt-BR&gl=br"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
+
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status()  # Levanta um erro para códigos de status HTTP 4xx ou 5xx
-        return parse_weather_data(response.text)
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Erro ao obter dados de clima para {city_name}: {e}")
-        return None
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
 
-# Função para analisar o HTML e extrair dados meteorológicos
-def parse_weather_data(html):
-    soup = BeautifulSoup(html, 'html.parser')
-    try:
-        # Tentando encontrar os dados de clima nas tags certas
-        temperature = soup.find("div", class_="BNeawe iBp4i AP7Wnd").text
-        wind_speed = soup.find("span", class_="BNeawe iBp4i AP7Wnd").text
-        humidity = soup.find("div", class_="BNeawe tAd8D AP7Wnd").text
+        # Extrair dados da página do Google
+        rain_probability = soup.find("span", {"id": "wob_pp"}).text.strip()
+        temperature = soup.find("span", {"id": "wob_tm"}).text.strip()
+        humidity = soup.find("span", {"id": "wob_hm"}).text.strip()
+        wind = soup.find("span", {"id": "wob_ws"}).text.strip()
+        condition = soup.find("span", {"id": "wob_dc"}).text.strip()
+
+        # Conversões
+        temperature_celsius = f"{temperature}°C"  # Google já retorna em Celsius
+        wind_speed_kmh = f"{int(float(wind.split()[0]) * 1.60934)} km/h"  # Convertendo mph para km/h
+
         return {
-            "temperature": temperature,
-            "wind_speed": wind_speed,
-            "humidity": humidity
+            "Temperatura": temperature_celsius,
+            "Condição": condition,
+            "Umidade": humidity,
+            "Vento": wind_speed_kmh,
+            "Probabilidade de Chuva": rain_probability
         }
-    except AttributeError:
-        logger.error("Erro ao analisar os dados de clima.")
-        return None
+    except (requests.RequestException, AttributeError, ValueError) as e:
+        logger.error(f"Erro ao obter dados de clima: {e}")
+        return {
+            "Temperatura": "N/D",
+            "Condição": "N/D",
+            "Umidade": "N/D",
+            "Vento": "N/D",
+            "Probabilidade de Chuva": "N/D"
+        }
 
-# Função para tentar obter dados com backoff exponencial
-def get_weather_data_with_retries(city_name, max_retries=5):
-    retries = 0
-    while retries < max_retries:
-        weather_data = get_weather_data_from_google(city_name)
-        if weather_data:  # Se os dados forem válidos, retorna os dados
-            return weather_data
-        
-        retries += 1
-        wait_time = random.uniform(2, 5) * retries  # Aumento progressivo do tempo de espera
-        logger.info(f"Requisição falhou para {city_name}, tentando novamente em {wait_time:.2f} segundos...")
-        time.sleep(wait_time)  # Espera entre tentativas
-    
-    logger.error(f"Falha ao obter dados de clima após {max_retries} tentativas para {city_name}.")
-    return None
-
-# Função para gerar a imagem com os dados meteorológicos
-def generate_weather_image(city_name, weather_data):
-    # Carregar a imagem base (ou criar uma imagem nova)
-    img = Image.new('RGB', (600, 400), color='skyblue')
-    draw = ImageDraw.Draw(img)
-    
-    # Fonte
+@app.route('/dynamic-image')
+def generate_image():
+    """Gera uma imagem JPG com os dados atualizados."""
+    logger.info("Rota /dynamic-image acessada.")
     try:
-        font = ImageFont.truetype("arial.ttf", 36)
-    except IOError:
-        font = ImageFont.load_default()
-    
-    # Texto para desenhar
-    text = f"Clima de {city_name}:\n"
-    text += f"Temperatura: {weather_data['temperature']}\n"
-    text += f"Vento: {weather_data['wind_speed']}\n"
-    text += f"Umidade: {weather_data['humidity']}"
-    
-    # Desenhar o texto na imagem
-    draw.text((50, 50), text, font=font, fill="black")
-    
-    # Salvar imagem em memória
-    img_byte_arr = BytesIO()
-    img.save(img_byte_arr, format="PNG")
-    img_byte_arr.seek(0)  # Reiniciar a posição do ponteiro
-    
-    # Retornar a imagem como resposta (poderia retornar como um arquivo, por exemplo)
-    return img_byte_arr
+        brasil_tz = timezone("America/Sao_Paulo")
+        horario_brasil = datetime.now(brasil_tz).strftime('%d/%m/%Y %H:%M:%S')
 
-# Função principal para lidar com o processamento da requisição
-@app.route('/dynamic-image', methods=['GET'])
-def process_request():
-    city_name = request.args.get('city', 'Itabira')  # A cidade é passada como parâmetro na URL
-    weather_cache = {}
+        width, row_height = 1700, 40
+        header_height = 60
+        padding = 63
+        total_height = header_height + len(CITIES) * row_height + padding
 
-    # Aguardar a obtenção dos dados meteorológicos completos
-    logger.info("Aguardando a obtenção de todos os dados meteorológicos...")
-    while True:
-        if city_name not in weather_cache or not weather_cache[city_name]:
-            # Tenta obter os dados com tentativas e backoff exponencial
-            weather_cache[city_name] = get_weather_data_with_retries(city_name)
-        
-        if weather_cache[city_name]:
-            logger.info(f"Todos os dados de clima para {city_name} foram obtidos com sucesso.")
-            img_byte_arr = generate_weather_image(city_name, weather_cache[city_name])
-            return img_byte_arr  # A imagem será retornada como resposta
-        
-        logger.info(f"Aguardando novos dados para {city_name}...")
+        image = Image.new("RGB", (width, total_height), "white")
+        draw = ImageDraw.Draw(image)
 
-# Iniciar a aplicação Flask
+        font = ImageFont.truetype(FONT_PATH, 20)
+        font_header = ImageFont.truetype(FONT_PATH, 22)
+
+        title = f"Dados Meteorológicos (Atualizado em {horario_brasil})"
+        draw.text((10, 10), title, fill="black", font=font)
+
+        headers = ["MINA", "CIDADE", "TEMPERATURA", "CONDIÇÃO", "UMIDADE", "VENTO", "PROBAB. CHUVA"]
+        col_widths = [450, 320, 140, 350, 70, 155, 185]
+
+        start_x = 10
+        y_offset = 50
+
+        # Cabeçalho
+        draw.rectangle([(start_x, y_offset), (width - 10, y_offset + header_height)], outline="black", fill="#4C9ED9")
+        for i, header in enumerate(headers):
+            bbox = draw.textbbox((0, 0), header, font=font_header)
+            text_width = bbox[2] - bbox[0]
+            text_x = start_x + sum(col_widths[:i]) + (col_widths[i] - text_width) // 2
+            draw.text((text_x, y_offset + 15), header, fill="white", font=font_header)
+        y_offset += header_height
+
+        # Dados
+        for i, city in enumerate(CITIES):
+            weather = get_weather_data_from_google(city["cidade"])
+            row_color = "#f4f4f4" if i % 2 == 0 else "#e0e0e0"
+            draw.rectangle([(start_x, y_offset), (width - 10, y_offset + row_height)], outline="black", fill=row_color)
+
+            # Escrever dados
+            draw.text((start_x + 10, y_offset + 10), city["mina"], fill="black", font=font)
+            draw.text((start_x + col_widths[0] + 10, y_offset + 10), city["nome"], fill="black", font=font)
+
+            row_data = [
+                weather["Temperatura"],
+                weather["Condição"],
+                weather["Umidade"],
+                weather["Vento"],
+                weather["Probabilidade de Chuva"]
+            ]
+            col_indices = [2, 3, 4, 5, 6]
+            for i, data in enumerate(row_data):
+                col_index = col_indices[i]
+                bbox = draw.textbbox((0, 0), data, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_x = start_x + sum(col_widths[:col_index]) + (col_widths[col_index] - text_width) // 2
+                draw.text((text_x, y_offset + 10), data, fill="black", font=font)
+
+            y_offset += row_height
+
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        buffer.seek(0)
+        return send_file(buffer, mimetype="image/jpeg", as_attachment=False, download_name="dynamic_image.jpg")
+    except Exception as e:
+        logger.error(f"Erro ao gerar imagem: {e}")
+        return "Erro ao gerar imagem", 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
