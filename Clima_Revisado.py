@@ -1,3 +1,4 @@
+from flask import Flask, jsonify, request
 import time
 import random
 import requests
@@ -5,6 +6,9 @@ from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import logging
+
+# Criação da aplicação Flask
+app = Flask(__name__)
 
 # Configuração de log
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +32,7 @@ def get_weather_data_from_google(city_name):
 def parse_weather_data(html):
     soup = BeautifulSoup(html, 'html.parser')
     try:
+        # Tentando encontrar os dados de clima nas tags certas
         temperature = soup.find("div", class_="BNeawe iBp4i AP7Wnd").text
         wind_speed = soup.find("span", class_="BNeawe iBp4i AP7Wnd").text
         humidity = soup.find("div", class_="BNeawe tAd8D AP7Wnd").text
@@ -86,32 +91,25 @@ def generate_weather_image(city_name, weather_data):
     return img_byte_arr
 
 # Função principal para lidar com o processamento da requisição
-def process_request(city_name):
-    # Variável de cache para armazenar dados enquanto o processo está em andamento
+@app.route('/dynamic-image', methods=['GET'])
+def process_request():
+    city_name = request.args.get('city', 'Itabira')  # A cidade é passada como parâmetro na URL
     weather_cache = {}
 
     # Aguardar a obtenção dos dados meteorológicos completos
     logger.info("Aguardando a obtenção de todos os dados meteorológicos...")
     while True:
-        # Verifica se todos os dados necessários estão disponíveis
         if city_name not in weather_cache or not weather_cache[city_name]:
             # Tenta obter os dados com tentativas e backoff exponencial
             weather_cache[city_name] = get_weather_data_with_retries(city_name)
         
-        # Se os dados estiverem completos, gera a imagem
         if weather_cache[city_name]:
             logger.info(f"Todos os dados de clima para {city_name} foram obtidos com sucesso.")
             img_byte_arr = generate_weather_image(city_name, weather_cache[city_name])
-            return img_byte_arr
+            return img_byte_arr  # A imagem será retornada como resposta
         
         logger.info(f"Aguardando novos dados para {city_name}...")
 
-# Simulação de uma requisição para a cidade de "Itabira"
-if __name__ == "__main__":
-    city_name = "Itabira"
-    image_data = process_request(city_name)
-
-    # Exemplo de como salvar a imagem gerada
-    with open("clima_itabira.png", "wb") as f:
-        f.write(image_data.read())
-    logger.info("Imagem salva com sucesso!")
+# Iniciar a aplicação Flask
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
