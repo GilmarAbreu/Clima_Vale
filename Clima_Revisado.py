@@ -42,23 +42,19 @@ def get_weather_data_from_google(city_name):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Extrair dados da página do Google
-        rain_probability = soup.find("span", {"id": "wob_pp"}).text.strip()
-        temperature = soup.find("span", {"id": "wob_tm"}).text.strip()
-        humidity = soup.find("span", {"id": "wob_hm"}).text.strip()
-        wind = soup.find("span", {"id": "wob_ws"}).text.strip()
-        condition = soup.find("span", {"id": "wob_dc"}).text.strip()
-
-        # Conversões
-        temperature_celsius = f"{temperature}°C"  # Google já retorna em Celsius
-        wind_speed_kmh = f"{int(float(wind.split()[0]) * 1.60934)} km/h"  # Convertendo mph para km/h
+        # Tenta encontrar os elementos esperados
+        rain_probability = soup.find("span", text=lambda t: t and "%" in t)
+        temperature = soup.find("span", text=lambda t: t and "\u00b0" in t)
+        humidity = soup.find("div", text="Umidade").find_next("span") if soup.find("div", text="Umidade") else None
+        wind = soup.find("div", text="Vento").find_next("span") if soup.find("div", text="Vento") else None
+        condition = soup.find("div", text=lambda t: t and "\u00b0" not in t).text.strip() if soup.find("div", text=lambda t: t and "\u00b0" not in t) else "N/D"
 
         return {
-            "Temperatura": temperature_celsius,
+            "Temperatura": temperature.text.strip() if temperature else "N/D",
             "Condição": condition,
-            "Umidade": humidity,
-            "Vento": wind_speed_kmh,
-            "Probabilidade de Chuva": rain_probability
+            "Umidade": humidity.text.strip() if humidity else "N/D",
+            "Vento": wind.text.strip() if wind else "N/D",
+            "Probabilidade de Chuva": rain_probability.text.strip() if rain_probability else "N/D"
         }
     except (requests.RequestException, AttributeError, ValueError) as e:
         logger.error(f"Erro ao obter dados de clima: {e}")
