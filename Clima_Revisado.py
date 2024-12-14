@@ -70,10 +70,10 @@ def get_weather_data_from_google(city_name):
             "Probabilidade de Chuva": "N/D"
         }
 
-@app.route('/dynamic-image')
+@app.route('/dynamic-image.jpg')
 def generate_image():
     """Gera uma imagem JPG com os dados atualizados."""
-    logger.info("Rota /dynamic-image acessada.")
+    logger.info("Rota /dynamic-image.jpg acessada.")
     try:
         brasil_tz = timezone("America/Sao_Paulo")
         horario_brasil = datetime.now(brasil_tz).strftime('%d/%m/%Y %H:%M:%S')
